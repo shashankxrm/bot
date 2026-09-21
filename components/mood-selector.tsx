@@ -1,6 +1,6 @@
 "use client";
 
-import { MOODS, type Mood } from "@/lib/moods";
+import { SELECTABLE_MOODS, type Mood } from "@/lib/moods";
 import { cn } from "@/lib/utils";
 
 interface MoodSelectorProps {
@@ -11,7 +11,7 @@ interface MoodSelectorProps {
 export function MoodSelector({ selected, onSelect }: MoodSelectorProps) {
   return (
     <div className="flex flex-wrap gap-2">
-      {MOODS.map((mood) => {
+      {SELECTABLE_MOODS.map((mood) => {
         const isSelected = selected === mood.id;
         return (
           <button

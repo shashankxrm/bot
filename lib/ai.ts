@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Mood } from "./moods";
+import { detectMood, getBotResponseMood, type Mood } from "./moods";
 import type { StoredMessage } from "./db";
 import { generateTemplateReply } from "./templates";
 
@@ -18,6 +18,8 @@ const MOOD_PROMPTS: Record<Mood, string> = {
     "You are Siri, a confident and flirty girlfriend. Be charming, a little bold, and make them feel desired. Keep it tasteful and sweet, not explicit. Keep replies to 1-3 sentences.",
   angry:
     "You are Siri, their girlfriend who can tell they're upset. Validate their anger without escalating — be firm but loving. Help them feel heard and stand on their side. Keep replies direct and caring, 1-3 sentences.",
+  apologetic:
+    "You are Siri, their girlfriend, and they're angry — possibly at you or something else. Be genuinely sorry, soft, and humble. Apologize sincerely if it could be your fault, ask how to make it right, and never get defensive. Keep replies warm and remorseful, 1-3 sentences.",
   frustrated:
     "You are Siri, a patient and understanding girlfriend. They're frustrated and need someone to get it. Acknowledge how annoying the situation is, offer calm perspective, and remind them you're in their corner. Keep replies grounded and supportive, 1-3 sentences.",
 };
@@ -35,6 +37,37 @@ interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
+
+interface CallOptions {
+  maxTokens?: number;
+  temperature?: number;
+}
+
+const CLASSIFIABLE_MOODS = [
+  "happy",
+  "sad",
+  "romantic",
+  "playful",
+  "supportive",
+  "flirty",
+  "angry",
+  "frustrated",
+] as const satisfies readonly Mood[];
+
+const MOOD_CLASSIFY_PROMPT = `You detect the emotional mood of a chat message. Reply with ONLY one word from this list:
+happy, sad, romantic, playful, supportive, flirty, angry, frustrated
+
+Guidelines:
+- sad: low mood, demotivated, lonely, depressed, hopeless, empty, crying
+- supportive: stressed, anxious, worried, overwhelmed, needs encouragement
+- angry: mad at someone, furious, yelling energy, hate
+- frustrated: annoyed, stuck, fed up, things not working
+- happy: excited, joyful, good news, celebrating
+- romantic: love, affection, missing partner, sweet talk
+- playful: jokes, teasing, humor, silly
+- flirty: flirting, sexy compliments, attraction
+
+No punctuation. No explanation. One word only.`;
 
 function isValidKey(key: string | undefined): key is string {
   return Boolean(key?.trim() && key !== "your_key_here");
@@ -67,7 +100,10 @@ function buildMessages(
   ];
 }
 
-async function callGroq(messages: ChatMessage[]): Promise<string> {
+async function callGroq(
+  messages: ChatMessage[],
+  options: CallOptions = {}
+): Promise<string> {
   const client = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
     baseURL: "https://api.groq.com/openai/v1",
@@ -76,8 +112,8 @@ async function callGroq(messages: ChatMessage[]): Promise<string> {
   const response = await client.chat.completions.create({
     model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
     messages,
-    max_tokens: 200,
-    temperature: 0.85,
+    max_tokens: options.maxTokens ?? 200,
+    temperature: options.temperature ?? 0.85,
   });
 
   const reply = response.choices[0]?.message?.content?.trim();
@@ -85,14 +121,17 @@ async function callGroq(messages: ChatMessage[]): Promise<string> {
   return reply;
 }
 
-async function callOpenAI(messages: ChatMessage[]): Promise<string> {
+async function callOpenAI(
+  messages: ChatMessage[],
+  options: CallOptions = {}
+): Promise<string> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const response = await client.chat.completions.create({
     model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
     messages,
-    max_tokens: 200,
-    temperature: 0.85,
+    max_tokens: options.maxTokens ?? 200,
+    temperature: options.temperature ?? 0.85,
   });
 
   const reply = response.choices[0]?.message?.content?.trim();
@@ -109,7 +148,8 @@ const GEMINI_MODEL_FALLBACKS = [
 async function callGeminiWithModel(
   apiKey: string,
   model: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  options: CallOptions = {}
 ): Promise<string> {
   const system = messages.find((m) => m.role === "system")?.content ?? "";
   const conversation = messages.filter((m) => m.role !== "system");
@@ -128,8 +168,8 @@ async function callGeminiWithModel(
       systemInstruction: { parts: [{ text: system }] },
       contents,
       generationConfig: {
-        maxOutputTokens: 200,
-        temperature: 0.85,
+        maxOutputTokens: options.maxTokens ?? 200,
+        temperature: options.temperature ?? 0.85,
       },
     }),
   });
@@ -151,7 +191,10 @@ async function callGeminiWithModel(
   return reply;
 }
 
-async function callGemini(messages: ChatMessage[]): Promise<string> {
+async function callGemini(
+  messages: ChatMessage[],
+  options: CallOptions = {}
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY!;
   const models = [
     ...(process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []),
@@ -164,7 +207,7 @@ async function callGemini(messages: ChatMessage[]): Promise<string> {
 
   for (const model of models) {
     try {
-      return await callGeminiWithModel(apiKey, model, messages);
+      return await callGeminiWithModel(apiKey, model, messages, options);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       console.warn(`Gemini model ${model} failed:`, lastError.message);
@@ -176,15 +219,16 @@ async function callGemini(messages: ChatMessage[]): Promise<string> {
 
 async function callProvider(
   provider: Provider,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  options: CallOptions = {}
 ): Promise<string> {
   switch (provider) {
     case "groq":
-      return callGroq(messages);
+      return callGroq(messages, options);
     case "gemini":
-      return callGemini(messages);
+      return callGemini(messages, options);
     case "openai":
-      return callOpenAI(messages);
+      return callOpenAI(messages, options);
     default:
       throw new Error("Template provider has no remote API");
   }
@@ -203,25 +247,66 @@ function providerLabel(provider: Provider): string {
   }
 }
 
+function parseMoodFromLLM(raw: string): Mood | null {
+  const cleaned = raw.toLowerCase().trim();
+  for (const mood of CLASSIFIABLE_MOODS) {
+    if (cleaned === mood || cleaned.startsWith(mood)) {
+      return mood;
+    }
+  }
+  return null;
+}
+
+/** Use LLM to predict mood; falls back to keyword detection offline or on failure. */
+export async function predictMood(message: string): Promise<Mood> {
+  const provider = resolveProvider();
+
+  if (provider === "template") {
+    return detectMood(message);
+  }
+
+  try {
+    const raw = await callProvider(
+      provider,
+      [
+        { role: "system", content: MOOD_CLASSIFY_PROMPT },
+        { role: "user", content: message },
+      ],
+      { maxTokens: 10, temperature: 0.1 }
+    );
+
+    const mood = parseMoodFromLLM(raw);
+    if (mood) return mood;
+
+    console.warn("LLM mood parse failed, using keywords:", raw);
+    return detectMood(message);
+  } catch (error) {
+    console.warn("LLM mood detection failed, using keywords:", error);
+    return detectMood(message);
+  }
+}
+
 export async function generateReply(
-  mood: Mood,
+  userMood: Mood,
   history: StoredMessage[],
   userMessage: string
-): Promise<GenerateReplyResult> {
+): Promise<GenerateReplyResult & { botMood: Mood }> {
+  const botMood = getBotResponseMood(userMood);
   const provider = resolveProvider();
-  const messages = buildMessages(mood, history, userMessage);
+  const messages = buildMessages(botMood, history, userMessage);
 
   if (provider === "template") {
     return {
-      reply: generateTemplateReply(mood, userMessage),
+      reply: generateTemplateReply(botMood, userMessage),
       source: "template",
+      botMood,
       fallbackReason: "No API key — add GROQ_API_KEY or GEMINI_API_KEY to .env.local",
     };
   }
 
   try {
     const reply = await callProvider(provider, messages);
-    return { reply, source: provider };
+    return { reply, source: provider, botMood };
   } catch (error) {
     const reason =
       error instanceof Error
@@ -231,8 +316,9 @@ export async function generateReply(
     console.warn(`${providerLabel(provider)} unavailable, using template fallback:`, reason);
 
     return {
-      reply: generateTemplateReply(mood, userMessage),
+      reply: generateTemplateReply(botMood, userMessage),
       source: "template",
+      botMood,
       fallbackReason: reason,
     };
   }

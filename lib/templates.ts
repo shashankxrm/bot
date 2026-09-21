@@ -41,6 +41,11 @@ const TEMPLATE_REPLIES: Record<Mood, string[]> = {
     "That sounds so exhausting. You've been dealing with a lot — I'm really proud of you for pushing through.",
     "Ugh, I totally get why you're fed up. Want me to help you think through it, or just listen?",
   ],
+  apologetic: [
+    "I'm so sorry, babe. I never want to upset you — please tell me what I can do to make it right.",
+    "You're right to be mad, and I'm really sorry. I hate that I made you feel this way.",
+    "I'm sorry, love. Can we talk about it? I want to fix this and make you feel better.",
+  ],
 };
 
 export function generateTemplateReply(mood: Mood, userMessage: string): string {

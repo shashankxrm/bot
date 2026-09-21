@@ -49,8 +49,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {message.content}
         </div>
 
-        {moodDef && !isUser && (
-          <span className="px-1 text-[10px] text-white/60">
+        {moodDef && (
+          <span
+            className={cn(
+              "px-1 text-[10px]",
+              isUser ? "text-white/70" : "text-white/60"
+            )}
+          >
             {moodDef.emoji} {moodDef.label}
           </span>
         )}

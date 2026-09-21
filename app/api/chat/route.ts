@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateReply } from "@/lib/ai";
+import { generateReply, predictMood } from "@/lib/ai";
 import { appendMessages, getMessages } from "@/lib/db";
-import { MOODS, resolveMood, type Mood } from "@/lib/moods";
+import { MOODS, type Mood } from "@/lib/moods";
 
-const VALID_MOODS: Mood[] = MOODS.map((m) => m.id);
+const VALID_MOODS: Mood[] = MOODS.filter((m) => m.selectable !== false).map(
+  (m) => m.id
+);
 
 function isValidMood(value: unknown): value is Mood {
   return typeof value === "string" && VALID_MOODS.includes(value as Mood);
@@ -26,25 +28,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const mood = resolveMood(message, selectedMood);
+    const userMood = selectedMood ?? (await predictMood(message));
     const history = await getMessages(sessionId);
     const timestamp = new Date().toISOString();
 
-    const { reply, source, fallbackReason } = await generateReply(
-      mood,
+    const { reply, botMood, source, fallbackReason } = await generateReply(
+      userMood,
       history,
       message
     );
     const replyTimestamp = new Date().toISOString();
 
     await appendMessages(sessionId, [
-      { role: "user", content: message, mood, timestamp },
-      { role: "assistant", content: reply, mood, timestamp: replyTimestamp },
+      { role: "user", content: message, mood: userMood, timestamp },
+      { role: "assistant", content: reply, mood: botMood, timestamp: replyTimestamp },
     ]);
 
     return NextResponse.json({
       reply,
-      mood,
+      userMood,
+      botMood,
       timestamp: replyTimestamp,
       source,
       fallbackReason,

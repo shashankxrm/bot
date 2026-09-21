@@ -10,12 +10,14 @@ export interface StoredMessage {
   timestamp: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+// Vercel serverless has a read-only filesystem — use /tmp there
+const DATA_DIR = process.env.VERCEL
+  ? path.join("/tmp", "siri-bot")
+  : path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "conversations.db");
-const LEGACY_JSON = path.join(DATA_DIR, "conversations.json");
+const LEGACY_JSON = path.join(process.cwd(), "data", "conversations.json");
 
 declare global {
-  // eslint-disable-next-line no-var
   var __siriDb: Database.Database | undefined;
 }
 

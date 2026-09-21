@@ -6,7 +6,8 @@ export type Mood =
   | "supportive"
   | "flirty"
   | "angry"
-  | "frustrated";
+  | "frustrated"
+  | "apologetic";
 
 export interface MoodDefinition {
   id: Mood;
@@ -15,6 +16,7 @@ export interface MoodDefinition {
   color: string;
   selectedClass: string;
   keywords: string[];
+  selectable?: boolean;
 }
 
 export const MOODS: MoodDefinition[] = [
@@ -48,7 +50,13 @@ export const MOODS: MoodDefinition[] = [
     emoji: "🥺",
     color: "bg-blue-100 text-blue-800 border-blue-200",
     selectedClass: "bg-blue-400 text-white border-blue-500 shadow-blue-200/50",
-    keywords: ["down", "lonely", "miss you", "crying", "sad", "upset", "hurt", "depressed"],
+    keywords: [
+      "down", "lonely", "miss you", "crying", "sad", "upset", "hurt", "depressed",
+      "demotivated", "unmotivated", "no motivation", "burnout", "burnt out", "burned out",
+      "drained", "hopeless", "empty", "miserable", "discouraged", "disheartened",
+      "worthless", "giving up", "lost interest", "feel like crap", "feeling low",
+      "don't feel like", "no energy", "can't be bothered", "what's the point",
+    ],
   },
   {
     id: "romantic",
@@ -72,7 +80,10 @@ export const MOODS: MoodDefinition[] = [
     emoji: "🤗",
     color: "bg-green-100 text-green-800 border-green-200",
     selectedClass: "bg-green-400 text-white border-green-500 shadow-green-200/50",
-    keywords: ["stressed", "help", "worried", "anxious", "tired", "overwhelmed", "scared", "nervous"],
+    keywords: [
+      "stressed", "help", "worried", "anxious", "overwhelmed", "scared", "nervous",
+      "panic", "pressure", "can't cope", "struggling", "hard time", "need support",
+    ],
   },
   {
     id: "flirty",
@@ -82,7 +93,18 @@ export const MOODS: MoodDefinition[] = [
     selectedClass: "bg-pink-400 text-white border-pink-500 shadow-pink-200/50",
     keywords: ["cute", "hot", "wink", "gorgeous", "sexy", "beautiful", "handsome", "daddy"],
   },
+  {
+    id: "apologetic",
+    label: "Sorry",
+    emoji: "🙏",
+    color: "bg-red-50 text-red-700 border-red-100",
+    selectedClass: "bg-red-300 text-white border-red-400 shadow-red-200/50",
+    keywords: [],
+    selectable: false,
+  },
 ];
+
+export const SELECTABLE_MOODS = MOODS.filter((m) => m.selectable !== false);
 
 export const DEFAULT_MOOD: Mood = "romantic";
 
@@ -102,6 +124,19 @@ export function resolveMood(message: string, selectedMood: Mood | null): Mood {
   return selectedMood ?? detectMood(message);
 }
 
+/** How Siri should respond — may differ from the user's detected mood. */
+export function getBotResponseMood(userMood: Mood): Mood {
+  switch (userMood) {
+    case "angry":
+      return "apologetic";
+    case "frustrated":
+    case "sad":
+      return "supportive";
+    default:
+      return userMood;
+  }
+}
+
 export function getMoodDefinition(mood: Mood): MoodDefinition {
-  return MOODS.find((m) => m.id === mood) ?? MOODS[2];
+  return MOODS.find((m) => m.id === mood) ?? MOODS.find((m) => m.id === "romantic")!;
 }

@@ -73,13 +73,20 @@ export default function Home() {
           throw new Error(data.error ?? "Something went wrong");
         }
 
-        const botMsg: ChatMessage = {
-          role: "assistant",
-          content: data.reply,
-          mood: data.mood,
-          timestamp: data.timestamp,
-        };
-        setMessages((prev) => [...prev, botMsg]);
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastUser = updated[updated.length - 1];
+          if (lastUser?.role === "user") {
+            lastUser.mood = data.userMood;
+          }
+          updated.push({
+            role: "assistant",
+            content: data.reply,
+            mood: data.botMood,
+            timestamp: data.timestamp,
+          });
+          return updated;
+        });
 
         if (data.source === "template" && data.fallbackReason) {
           setNotice(data.fallbackReason);
